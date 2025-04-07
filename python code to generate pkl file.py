@@ -1,74 +1,44 @@
-import serial
-import time
-import matplotlib.pyplot as plt
-from collections import deque
+# Import necessary libraries
+import pandas as pd
+import numpy as np
+import joblib
+from sklearn.model_selection import train_test_split
+from sklearn.ensemble import RandomForestClassifier
+from sklearn.preprocessing import LabelEncoder
+from sklearn.metrics import accuracy_score, confusion_matrix
 
-PORT = 'COM3'             # Change as needed
-BAUD = 9600
-MAX_TIME = 10             # seconds of data to show on screen
-REFRESH_RATE = 0.1
+# Load the dataset (Ensure you upload it first)
+file_path = "/content/HVAC_Airflow_Data.xlsx"
+df = pd.read_excel(file_path)
 
-ser = serial.Serial(PORT, BAUD, timeout=1)
-time.sleep(2)
-print(f"Connected to {PORT}")
+# Select relevant features and target variable
+features = ["Pressure (atm)", "Temperature (°C)"]
+target = "Classification"
 
-buffer_size = int(MAX_TIME / REFRESH_RATE)
+# Encode the target variable (Balanced = 1, Unbalanced = 0)
+label_encoder = LabelEncoder()
+df[target] = label_encoder.fit_transform(df[target])
 
-time_buf = deque(maxlen=buffer_size)
-x_buf = deque(maxlen=buffer_size)
-y_buf = deque(maxlen=buffer_size)
-z_buf = deque(maxlen=buffer_size)
+# Split data into training and testing sets (80% train, 20% test)
+X_train, X_test, y_train, y_test = train_test_split(df[features], df[target], test_size=0.2, random_state=42)
 
-plt.ion()
-fig, (ax1, ax2, ax3) = plt.subplots(3, 1, figsize=(10, 8))
+# Train a Random Forest classifier
+model = RandomForestClassifier(n_estimators=100, random_state=42)
+model.fit(X_train, y_train)
 
-def update_plot():
-    ax1.clear()
-    ax2.clear()
-    ax3.clear()
+# Make predictions
+y_pred = model.predict(X_test)
 
-    ax1.plot(time_buf, x_buf, 'r')
-    ax2.plot(time_buf, y_buf, 'g')
-    ax3.plot(time_buf, z_buf, 'b')
+# Evaluate the model
+accuracy = accuracy_score(y_test, y_pred)
+conf_matrix = confusion_matrix(y_test, y_pred)
 
-    ax1.set_title("X Axis Acceleration")
-    ax2.set_title("Y Axis Acceleration")
-    ax3.set_title("Z Axis Acceleration")
+# Save the trained model
+model_path = "/content/hvac_airflow_classifier.pkl"
+joblib.dump(model, model_path)
 
-    for ax in (ax1, ax2, ax3):
-        ax.set_xlabel("Time (s)")
-        ax.set_ylabel("Accel (m/s²)")
-        ax.grid(True)
-
-    plt.tight_layout()
-    plt.pause(0.01)
-
-start_time = time.time()
-while True:
-    try:
-        line = ser.readline().decode().strip()
-        if not line:
-            continue
-
-        parts = line.split(',')
-        if len(parts) != 4:
-            continue
-
-        t_ms, x, y, z = map(float, parts)
-        t = (t_ms / 1000.0) - (start_time)
-
-        time_buf.append(t)
-        x_buf.append(x)
-        y_buf.append(y)
-        z_buf.append(z)
-
-        update_plot()
-        time.sleep(REFRESH_RATE)
-
-    except KeyboardInterrupt:
-        print("Exiting...")
-        break
-    except Exception as e:
-        print("Error:", e)
-
-ser.close()
+# Print results
+print(f"Model Accuracy: {accuracy * 100:.2f}%")
+print("Confusion Matrix:")
+print(conf_matrix)
+print(f"Model saved to: {model_path}")
